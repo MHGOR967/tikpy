@@ -1,6 +1,6 @@
 # =====================================================================
-# 🐍 TikTok 24/7 Session Keeper & Universal User Inspector
-# تطبيق بايثون المزدوج: تثبيت الجلسة كل 10 ثوانٍ + كشف أي حساب تيك توك
+# 🐍 TikTok USA 24/7 Session Keeper & Universal Inspector
+# مبني بنفس خوارزمية Pydroid الناجحة 100% مع Oxylabs US Proxy
 # =====================================================================
 
 import sys
@@ -10,7 +10,7 @@ import time
 import threading
 from datetime import datetime
 
-# --- 1. التثبيت التلقائي للمكتبات في حال عدم وجودها ---
+# --- 1. التثبيت التلقائي للمكتبات ---
 def install_and_import(package, import_name=None):
     if import_name is None:
         import_name = package
@@ -30,12 +30,9 @@ from colorama import Fore, Style, init
 
 init(autoreset=True)
 
-# --- 2. الإعدادات والبيانات المعتمدة ---
-DEFAULT_PROXY = "http://user-iwahm_5Kddd-country-US:pX_sp7ZhSs4hlyJ@dc.oxylabs.io:8000"
-DEFAULT_SESSION = "78534469621c1064eae0e17393022dee"
-
-PROXY_URL = os.environ.get("PROXY_URL", DEFAULT_PROXY)
-SESSION_ID = os.environ.get("SESSION_ID", DEFAULT_SESSION)
+# --- 2. الإعدادات والبيانات المعتمدة من كود Pydroid الناجح ---
+PROXY_URL = "http://user-iwahm_5Kddd-country-US:pX_sp7ZhSs4hlyJ@dc.oxylabs.io:8000"
+SESSION_ID = "78534469621c1064eae0e17393022dee"
 
 PROXIES = {
     "http": PROXY_URL,
@@ -45,10 +42,16 @@ PROXIES = {
 HEADERS = {
     "User-Agent": "TikTok 30.0.0 rv:300013 (iPhone; iOS 16.5; ar_SA) Cronet",
     "Accept": "application/json",
-    "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8"
+    "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8",
+    "Cookie": f"sessionid={SESSION_ID}; sessionid_ss={SESSION_ID}; sid_tt={SESSION_ID}; store-country-code=us;"
 }
 
-# حالة الجلسة الخاصة والسجلات
+ENDPOINTS = [
+    "https://api16-normal-c-useast1a.tiktokv.com/passport/web/account/info/?aid=1233",
+    "https://www.tiktok.com/passport/web/account/info/?aid=1459"
+]
+
+# متغيرات الحساب والسجلات
 session_state = {
     "status": "INITIALIZING",
     "last_checked": None,
@@ -70,85 +73,96 @@ def add_log(log_type, message):
     if len(activity_logs) > 35:
         activity_logs.pop()
 
-# --- 3. فحص اتصال البروكسي ---
+# --- 3. فحص الـ IP والبروكسي ---
 def check_proxy_ip():
     try:
-        response = requests.get("http://ip-api.com/json/", proxies=PROXIES, timeout=8)
+        response = requests.get("http://ip-api.com/json/", proxies=PROXIES, timeout=10)
         data = response.json()
         if data.get("status") == "success":
             session_state["proxy_ip"] = data.get("query")
             session_state["proxy_location"] = f"{data.get('country')} ({data.get('countryCode')})"
             session_state["proxy_isp"] = data.get("isp")
+            add_log("success", f"🌐 IP البروكسي: {data.get('query')} [{data.get('country')}]")
             return True
     except Exception as e:
-        session_state["proxy_ip"] = "خطأ في البروكسي"
+        session_state["proxy_ip"] = "خطأ بالبروكسي"
+        add_log("error", f"⚠️ تعذر الاتصال بالبروكسي: {e}")
     return False
 
-# --- 4. نبضة تثبيت الجلسة الخاصة كل 10 ثوانٍ ---
-def send_session_ping():
+# --- 4. دالة إرسال النبضة المطابقة لكود Pydroid ---
+def send_tiktok_ping():
     session_state["total_pings"] += 1
     session_state["last_checked"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    clean_sid = SESSION_ID.strip() if SESSION_ID else ""
-    if not clean_sid:
-        session_state["status"] = "REJECTED"
-        session_state["error_message"] = "Session ID غير موجود."
-        return
 
     check_proxy_ip()
 
     add_log("ping", f"⚡ نبضة تثبيت الجلسة رقم (#{session_state['total_pings']}) عبر بروكسي Oxylabs...")
 
-    ping_headers = HEADERS.copy()
-    ping_headers["Cookie"] = f"sessionid={clean_sid}; sessionid_ss={clean_sid}; sid_tt={clean_sid}; store-country-code=us;"
+    current_headers = HEADERS.copy()
+    clean_sid = SESSION_ID.strip() if SESSION_ID else ""
+    current_headers["Cookie"] = f"sessionid={clean_sid}; sessionid_ss={clean_sid}; sid_tt={clean_sid}; store-country-code=us;"
 
-    url = "https://api16-normal-c-useast1a.tiktokv.com/passport/web/account/info/?aid=1233"
+    success = False
+    for idx, url in enumerate(ENDPOINTS, 1):
+        try:
+            res = requests.get(url, headers=current_headers, proxies=PROXIES, timeout=12)
+            res_json = res.json()
 
-    try:
-        res = requests.get(url, headers=ping_headers, proxies=PROXIES, timeout=10)
-        res_json = res.json()
+            if res_json.get("data") and (res_json["data"].get("user_id") or res_json["data"].get("username")):
+                u = res_json["data"]
+                session_state["status"] = "LOGGED_IN"
+                session_state["successful_pings"] += 1
+                session_state["error_message"] = None
 
-        if res_json.get("data") and (res_json["data"].get("user_id") or res_json["data"].get("username")):
-            u = res_json["data"]
-            session_state["status"] = "LOGGED_IN"
-            session_state["successful_pings"] += 1
-            session_state["error_message"] = None
+                created_date = "غير معلن"
+                if u.get("create_time"):
+                    created_date = datetime.fromtimestamp(u.get("create_time")).strftime("%Y-%m-%d %H:%M:%S")
 
-            created_date = "غير معلن"
-            if u.get("create_time"):
-                created_date = datetime.fromtimestamp(u.get("create_time")).strftime("%Y-%m-%d %H:%M:%S")
+                session_state["account"] = {
+                    "user_id": u.get("user_id") or "---",
+                    "username": u.get("username") or u.get("screen_name") or "---",
+                    "nickname": u.get("screen_name") or u.get("username") or "---",
+                    "avatar": u.get("avatar_url") or "",
+                    "email": u.get("email") or "غير معلن",
+                    "mobile": u.get("mobile") or "غير معلن",
+                    "created_at": created_date,
+                    "region": (u.get("country_code") or u.get("region") or "US").upper()
+                }
 
-            session_state["account"] = {
-                "user_id": u.get("user_id") or "---",
-                "username": u.get("username") or u.get("screen_name") or "---",
-                "nickname": u.get("screen_name") or "---",
-                "avatar": u.get("avatar_url") or "",
-                "email": u.get("email") or "غير معلن",
-                "mobile": u.get("mobile") or "غير معلن",
-                "created_at": created_date,
-                "region": (u.get("country_code") or u.get("region") or "US").upper()
-            }
-            add_log("success", f"✅ الجلسة نشطة ومستقرة للحساب: @{session_state['account']['username']}")
-        else:
-            session_state["status"] = "REJECTED"
-            session_state["failed_pings"] += 1
-            session_state["error_message"] = "Login Expired"
-            add_log("error", "❌ رفض تيك توك الجلسة (Login Expired).")
-    except Exception as e:
-        session_state["status"] = "ERROR"
-        add_log("error", f"⚠️ خطأ أثناء الطلب: {e}")
+                add_log("success", f"🎉 نجاح الجلسة للمستخدم: @{session_state['account']['username']} | المنطقة: {session_state['account']['region']}")
+                success = True
+                break
+        except Exception as e:
+            add_log("error", f"⚠️ تعذر المسار ({idx}): {e}")
 
-# --- 5. حلقة التكرار في الخلفية كل 10 ثوانٍ ---
+    if not success:
+        session_state["status"] = "REJECTED"
+        session_state["failed_pings"] += 1
+        session_state["error_message"] = "Login Expired"
+        add_log("error", "❌ تم رفض الجلسة (Login Expired).")
+
+    return success
+
+# تنفيذ نبضة فورية عند بدء تشغيل الملف
+try:
+    send_tiktok_ping()
+except Exception as err:
+    print("Initial ping error:", err)
+
+# --- 5. حلقة خلفية للنبضات المتواصلة كل 10 ثوانٍ ---
 def background_ping_loop():
-    print(Fore.GREEN + "🔥 تم تشغيل محرك تثبيت الجلسة في الخلفية (كل 10 ثوانٍ)...")
+    print(Fore.GREEN + "🔥 تشغيل خيط الخلفية لنبضات الجلسة كل 10 ثوانٍ...")
     while True:
         try:
-            send_session_ping()
+            send_tiktok_ping()
         except Exception as err:
-            print(f"Loop error: {err}")
-        time.sleep(10) # التكرار المستمر كل 10 ثوانٍ
+            print(f"Background Loop Error: {err}")
+        time.sleep(10)
 
-# --- 6. تطبيق الويب للبحث وتصفح البيانات ---
+bg_thread = threading.Thread(target=background_ping_loop, daemon=True)
+bg_thread.start()
+
+# --- 6. واجهة التطبيق الويب (Flask App) ---
 app = Flask(__name__)
 
 HTML_UI = """
@@ -157,7 +171,7 @@ HTML_UI = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تثبيت الجلسة وباحث الحسابات الشامل 🇺🇸</title>
+    <title>تثبيت الجلسة وباحث تيك توك الشامل 🇺🇸</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
@@ -190,7 +204,7 @@ HTML_UI = """
             </div>
         </div>
 
-        <!-- 🔍 قسم البحث في أي حساب تيك توك (TikTok Profile Inspector) -->
+        <!-- 🔍 كشف واستعلام عن أي حساب -->
         <div class="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/30 border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-5">
             <div class="flex items-center space-x-3 space-x-reverse border-b border-slate-800 pb-3">
                 <i class="fa-solid fa-magnifying-glass text-amber-400 text-lg"></i>
@@ -209,10 +223,9 @@ HTML_UI = """
                 </button>
             </form>
 
-            <!-- نتائج البحث للمستخدم المستهدف -->
             <div id="searchLoading" class="hidden py-8 text-center text-slate-400 text-xs font-medium">
                 <i class="fa-solid fa-spinner animate-spin text-2xl mb-2 block text-amber-400"></i>
-                جاري الاتصال ببروكسي Oxylabs وجلب بيانات الحساب والدولة...
+                جاري جلب بيانات الحساب والدولة عبر البروكسي...
             </div>
 
             <div id="searchResultCard" class="hidden bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-4">
@@ -291,10 +304,11 @@ HTML_UI = """
                         <p id="accUsername" class="text-xs text-slate-400 mono">@---</p>
                     </div>
                 </div>
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
                     <div><span class="text-slate-500">USER ID:</span> <span id="accId" class="mono text-slate-200">---</span></div>
                     <div><span class="text-slate-500">دولة الحساب:</span> <span id="accReg" class="font-bold text-amber-400">---</span></div>
-                    <div><span class="text-slate-500">تاريخ الإنشاء:</span> <span id="accCreatedAt" class="text-slate-200">---</span></div>
+                    <div><span class="text-slate-500">الإيميل:</span> <span id="accEmail" class="mono text-amber-400">---</span></div>
+                    <div><span class="text-slate-500">الهاتف:</span> <span id="accPhone" class="mono text-amber-400">---</span></div>
                 </div>
             </div>
         </div>
@@ -332,7 +346,7 @@ HTML_UI = """
                     const badge = document.getElementById('statusBadge');
                     if (state.status === 'LOGGED_IN') {
                         badge.className = 'inline-flex items-center space-x-2 space-x-reverse px-4 py-2 rounded-2xl text-xs font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800';
-                        badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span><span>نشط ومصل الجلسة كل 10 ثوانٍ 🇺🇸</span>';
+                        badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span><span>نشط ومسجل الجلسة كل 10 ثوانٍ 🇺🇸</span>';
                     } else if (state.status === 'REJECTED') {
                         badge.className = 'inline-flex items-center space-x-2 space-x-reverse px-4 py-2 rounded-2xl text-xs font-bold bg-rose-950/80 text-rose-300 border border-rose-800';
                         badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span><span>الجلسة مرفوضة ❌</span>';
@@ -345,7 +359,8 @@ HTML_UI = """
                         document.getElementById('accAvatar').src = acc.avatar;
                         document.getElementById('accId').innerText = acc.user_id;
                         document.getElementById('accReg').innerText = acc.region;
-                        document.getElementById('accCreatedAt').innerText = acc.created_at || 'غير معلن';
+                        document.getElementById('accEmail').innerText = acc.email || 'غير معلن';
+                        document.getElementById('accPhone').innerText = acc.mobile || 'غير معلن';
                         document.getElementById('accountDetails').classList.remove('hidden');
                     }
 
@@ -433,14 +448,13 @@ def get_status():
         "logs": activity_logs
     })
 
-# API الاستعلام عن أي مستخدم في تيك توك
 @app.route("/api/lookup")
 def lookup_user():
     username = request.args.get("username", "").strip().replace("@", "")
     if not username:
         return jsonify({"success": False, "message": "اسم المستخدم مطلوب"}), 400
 
-    add_log("ping", f"🔍 جاري الاستعلام عن الحساب Target: @{username}...")
+    add_log("ping", f"🔍 جاري كشف بيانات @{username} عبر Oxylabs US Proxy...")
 
     url = f"https://www.tiktok.com/api/user/detail/?aid=1988&uniqueId={username}"
     try:
@@ -470,18 +484,12 @@ def lookup_user():
                 }
             })
         else:
-            msg = res.get("status_msg") or "الحساب غير موجود أو خاص جدًا"
+            msg = res.get("status_msg") or "الحساب غير موجود أو خاص"
             return jsonify({"success": False, "message": msg}), 404
     except Exception as e:
         return jsonify({"success": False, "message": f"خطأ شبكة: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    # 1. تشغيل الخيط الخفي الذي يرسل النبضات كل 10 ثوانٍ
-    bg_thread = threading.Thread(target=background_ping_loop, daemon=True)
-    bg_thread.start()
-
-    # 2. تشغيل خادم الويب
     port = int(os.environ.get("PORT", 5000))
-    print(Fore.GREEN + f"🚀 تم تشغيل الخادم على المنفذ {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
 
