@@ -1,6 +1,5 @@
 # =====================================================================
 # 🐍 TikTok USA 24/7 Session Keeper & Universal Inspector
-# مبني بنفس خوارزمية Pydroid الناجحة 100% مع Oxylabs US Proxy
 # =====================================================================
 
 import sys
@@ -30,7 +29,7 @@ from colorama import Fore, Style, init
 
 init(autoreset=True)
 
-# --- 2. الإعدادات والبيانات المعتمدة من كود Pydroid الناجح ---
+# --- 2. الإعدادات والبيانات المعتمدة ---
 PROXY_URL = "http://user-iwahm_5Kddd-country-US:pX_sp7ZhSs4hlyJ@dc.oxylabs.io:8000"
 SESSION_ID = "78534469621c1064eae0e17393022dee"
 
@@ -42,8 +41,7 @@ PROXIES = {
 HEADERS = {
     "User-Agent": "TikTok 30.0.0 rv:300013 (iPhone; iOS 16.5; ar_SA) Cronet",
     "Accept": "application/json",
-    "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8",
-    "Cookie": f"sessionid={SESSION_ID}; sessionid_ss={SESSION_ID}; sid_tt={SESSION_ID}; store-country-code=us;"
+    "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8"
 }
 
 ENDPOINTS = [
@@ -51,7 +49,6 @@ ENDPOINTS = [
     "https://www.tiktok.com/passport/web/account/info/?aid=1459"
 ]
 
-# متغيرات الحساب والسجلات
 session_state = {
     "status": "INITIALIZING",
     "last_checked": None,
@@ -69,27 +66,27 @@ activity_logs = []
 
 def add_log(log_type, message):
     now_str = datetime.now().strftime("%H:%M:%S")
-    activity_logs.insert(0, {"id": time.time(), "time": now_str, "type": log_type, "message": message})
+    activity_logs.insert(0, {"id": time.time(), "time": now_str, "type": log_type, "message": str(message)})
     if len(activity_logs) > 35:
         activity_logs.pop()
 
-# --- 3. فحص الـ IP والبروكسي ---
+# --- 3. فحص اتصال البروكسي ---
 def check_proxy_ip():
     try:
         response = requests.get("http://ip-api.com/json/", proxies=PROXIES, timeout=10)
         data = response.json()
         if data.get("status") == "success":
-            session_state["proxy_ip"] = data.get("query")
-            session_state["proxy_location"] = f"{data.get('country')} ({data.get('countryCode')})"
-            session_state["proxy_isp"] = data.get("isp")
-            add_log("success", f"🌐 IP البروكسي: {data.get('query')} [{data.get('country')}]")
+            session_state["proxy_ip"] = str(data.get("query", "---"))
+            session_state["proxy_location"] = f"{data.get('country', 'US')} ({data.get('countryCode', 'US')})"
+            session_state["proxy_isp"] = str(data.get("isp", "---"))
+            add_log("success", f"🌐 IP البروكسي: {session_state['proxy_ip']} [{data.get('country')}]")
             return True
     except Exception as e:
         session_state["proxy_ip"] = "خطأ بالبروكسي"
         add_log("error", f"⚠️ تعذر الاتصال بالبروكسي: {e}")
     return False
 
-# --- 4. دالة إرسال النبضة المطابقة لكود Pydroid ---
+# --- 4. نبضة تثبيت الجلسة الخاصة كل 10 ثوانٍ ---
 def send_tiktok_ping():
     session_state["total_pings"] += 1
     session_state["last_checked"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -116,17 +113,24 @@ def send_tiktok_ping():
 
                 created_date = "غير معلن"
                 if u.get("create_time"):
-                    created_date = datetime.fromtimestamp(u.get("create_time")).strftime("%Y-%m-%d %H:%M:%S")
+                    try:
+                        created_date = datetime.fromtimestamp(int(u.get("create_time"))).strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        created_date = str(u.get("create_time"))
+
+                # إصلاح الخطأ: تحويل رمز الدولة لنص قبل upper() لتفادي الخطأ مع الأرقام مثل 966
+                raw_region = u.get("country_code") or u.get("region") or "US"
+                region_str = str(raw_region).upper()
 
                 session_state["account"] = {
-                    "user_id": u.get("user_id") or "---",
-                    "username": u.get("username") or u.get("screen_name") or "---",
-                    "nickname": u.get("screen_name") or u.get("username") or "---",
-                    "avatar": u.get("avatar_url") or "",
-                    "email": u.get("email") or "غير معلن",
-                    "mobile": u.get("mobile") or "غير معلن",
+                    "user_id": str(u.get("user_id", "---")),
+                    "username": str(u.get("username") or u.get("screen_name") or "---"),
+                    "nickname": str(u.get("screen_name") or u.get("username") or "---"),
+                    "avatar": str(u.get("avatar_url") or ""),
+                    "email": str(u.get("email") or "غير معلن"),
+                    "mobile": str(u.get("mobile") or "غير معلن"),
                     "created_at": created_date,
-                    "region": (u.get("country_code") or u.get("region") or "US").upper()
+                    "region": region_str
                 }
 
                 add_log("success", f"🎉 نجاح الجلسة للمستخدم: @{session_state['account']['username']} | المنطقة: {session_state['account']['region']}")
@@ -143,7 +147,7 @@ def send_tiktok_ping():
 
     return success
 
-# تنفيذ نبضة فورية عند بدء تشغيل الملف
+# نبضة أولية
 try:
     send_tiktok_ping()
 except Exception as err:
@@ -273,7 +277,7 @@ HTML_UI = """
             </div>
         </div>
 
-        <!-- 📌 حالة اتصال الحساب الشخصي والنشر المتواصل كل 10 ثوانٍ -->
+        <!-- 📌 حالة اتصال الحساب الشخصي -->
         <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-md space-y-4">
             <h2 class="text-xs font-extrabold text-slate-400 tracking-wider uppercase border-b border-slate-800 pb-3 flex justify-between items-center">
                 <span>حالة تثبيت الجلسة الخاصة بك (24/7 Engine)</span>
@@ -463,16 +467,19 @@ def lookup_user():
             u = res["userInfo"]["user"]
             st = res["userInfo"].get("stats", {})
 
-            add_log("success", f"✅ تم جلب بيانات @{username} (المنطقة: {u.get('region', 'US').upper()})")
+            raw_reg = u.get("region") or "US"
+            reg_str = str(raw_reg).upper()
+
+            add_log("success", f"✅ تم جلب بيانات @{username} (المنطقة: {reg_str})")
 
             return jsonify({
                 "success": True,
                 "user": {
                     "username": u.get("uniqueId"),
                     "nickname": u.get("nickname"),
-                    "user_id": u.get("id") or u.get("uid"),
-                    "region": (u.get("region") or "US").upper(),
-                    "language": (u.get("language") or "ar").upper(),
+                    "user_id": str(u.get("id") or u.get("uid") or "---"),
+                    "region": reg_str,
+                    "language": str(u.get("language") or "ar").upper(),
                     "verified": bool(u.get("verified")),
                     "private": bool(u.get("privateAccount")),
                     "followers": st.get("followerCount", 0),
