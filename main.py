@@ -1,6 +1,6 @@
 # =====================================================================
-# 🐍 TikTok USA 24/7 Session Keeper & Universal Inspector
-# إصلاح شامل لنظام البحث وإضافة 3 طرق جلب تلقائية للحسابات
+# 🐍 TikTok USA 24/7 Session Keeper & Universal Country Inspector
+# دعم إظهار الدول الحقيقية باللغة العربية والأعلام + دعم بروكسي Oxylabs
 # =====================================================================
 
 import sys
@@ -32,7 +32,58 @@ from colorama import Fore, Style, init
 
 init(autoreset=True)
 
-# --- 2. الإعدادات والبيانات المعتمدة ---
+# --- 2. قاموس الدول والأعلام العربية الشامل ---
+COUNTRY_MAP = {
+    "SA": "السعودية 🇸🇦 (SA)",
+    "KSA": "السعودية 🇸🇦 (SA)",
+    "966": "السعودية 🇸🇦 (SA)",
+    "US": "الولايات المتحدة 🇺🇸 (US)",
+    "USA": "الولايات المتحدة 🇺🇸 (US)",
+    "1": "الولايات المتحدة / كندا 🇺🇸🇨🇦",
+    "EG": "مصر 🇪🇬 (EG)",
+    "AE": "الإمارات 🇦🇪 (AE)",
+    "KW": "الكويت 🇰🇼 (KW)",
+    "IQ": "العراق 🇮🇶 (IQ)",
+    "JO": "الأردن 🇯🇴 (JO)",
+    "MA": "المغرب 🇲🇦 (MA)",
+    "QA": "قطر 🇶🇦 (QA)",
+    "BH": "البحرين 🇧🇭 (BH)",
+    "OM": "عُمان 🇴🇲 (OM)",
+    "DZ": "الجزائر 🇩🇿 (DZ)",
+    "TN": "تونس 🇹🇳 (TN)",
+    "LY": "ليبيا 🇱🇾 (LY)",
+    "SD": "السودان 🇸🇩 (SD)",
+    "YE": "اليمن 🇾🇪 (YE)",
+    "SY": "سوريا 🇸🇾 (SY)",
+    "LB": "لبنان 🇱🇧 (LB)",
+    "TR": "تركيا 🇹🇷 (TR)",
+    "GB": "المملكة المتحدة 🇬🇧 (GB)",
+    "UK": "المملكة المتحدة 🇬🇧 (GB)",
+    "CA": "كندا 🇨🇦 (CA)",
+    "DE": "ألمانيا 🇩🇪 (DE)",
+    "FR": "فرنسا 🇫🇷 (FR)",
+    "IT": "إيطاليا 🇮🇹 (IT)",
+    "ES": "إسبانيا 🇪🇸 (ES)",
+    "RU": "روسيا 🇷🇺 (RU)",
+    "IN": "الهند 🇮🇳 (IN)",
+    "BR": "البرازيل 🇧🇷 (BR)",
+    "ID": "إندونيسيا 🇮🇩 (ID)",
+    "MY": "ماليزيا 🇲🇾 (MY)",
+    "PK": "باكستان 🇵🇰 (PK)"
+}
+
+def get_formatted_region(*raw_values):
+    """استخراج وتنسيق اسم الدولة الحقيقي مع العلم والتأكد من عدم التخمين الخاطئ"""
+    for val in raw_values:
+        if val is not None:
+            s = str(val).strip().upper()
+            if s and s not in ["NONE", "NULL", "UNDEFINED", ""]:
+                if s in COUNTRY_MAP:
+                    return COUNTRY_MAP[s]
+                return f"{s} 🌐"
+    return "غير محدد ❓"
+
+# --- 3. الإعدادات والبيانات المعتمدة ---
 PROXY_URL = "http://user-iwahm_5Kddd-country-US:pX_sp7ZhSs4hlyJ@dc.oxylabs.io:8000"
 SESSION_ID = "78534469621c1064eae0e17393022dee"
 
@@ -67,17 +118,25 @@ def add_log(log_type, message):
     if len(activity_logs) > 35:
         activity_logs.pop()
 
-def get_session_headers(mobile_agent=True):
+# ترويسة الجلسة الخاصة لتثبيت موقعك الأمريكى
+def get_session_headers():
     clean_sid = SESSION_ID.strip() if SESSION_ID else ""
-    ua = "TikTok 30.0.0 rv:300013 (iPhone; iOS 16.5; ar_SA) Cronet" if mobile_agent else "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1"
     return {
-        "User-Agent": ua,
+        "User-Agent": "TikTok 30.0.0 rv:300013 (iPhone; iOS 16.5; ar_SA) Cronet",
         "Accept": "application/json, text/html, */*",
         "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8",
         "Cookie": f"sessionid={clean_sid}; sessionid_ss={clean_sid}; sid_tt={clean_sid}; store-country-code=us;"
     }
 
-# --- 3. فحص اتصال البروكسي ---
+# ترويسة محايدة ونظيفة للبحث عن المستخدمين بدون فرض الكوكي الأمريكي
+def get_clean_lookup_headers():
+    return {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
+        "Accept": "application/json, text/html, */*",
+        "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8"
+    }
+
+# --- 4. فحص اتصال البروكسي ---
 def check_proxy_ip():
     try:
         response = requests.get("http://ip-api.com/json/", proxies=PROXIES, timeout=10)
@@ -93,7 +152,7 @@ def check_proxy_ip():
         add_log("error", f"⚠️ تعذر الاتصال بالبروكسي: {e}")
     return False
 
-# --- 4. نبضة تثبيت الجلسة الخاصة كل 10 ثوانٍ ---
+# --- 5. نبضة تثبيت الجلسة الخاصة كل 10 ثوانٍ ---
 def send_tiktok_ping():
     session_state["total_pings"] += 1
     session_state["last_checked"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -102,7 +161,7 @@ def send_tiktok_ping():
 
     add_log("ping", f"⚡ نبضة تثبيت الجلسة رقم (#{session_state['total_pings']}) عبر بروكسي Oxylabs...")
 
-    headers = get_session_headers(mobile_agent=True)
+    headers = get_session_headers()
     success = False
 
     for idx, url in enumerate(ENDPOINTS, 1):
@@ -123,8 +182,7 @@ def send_tiktok_ping():
                     except Exception:
                         created_date = str(u.get("create_time"))
 
-                raw_region = u.get("country_code") or u.get("region") or "US"
-                region_str = str(raw_region).upper()
+                reg_display = get_formatted_region(u.get("country_code"), u.get("region"))
 
                 session_state["account"] = {
                     "user_id": str(u.get("user_id", "---")),
@@ -134,7 +192,7 @@ def send_tiktok_ping():
                     "email": str(u.get("email") or "غير معلن"),
                     "mobile": str(u.get("mobile") or "غير معلن"),
                     "created_at": created_date,
-                    "region": region_str
+                    "region": reg_display
                 }
 
                 add_log("success", f"🎉 نجاح الجلسة للمستخدم: @{session_state['account']['username']} | المنطقة: {session_state['account']['region']}")
@@ -157,7 +215,7 @@ try:
 except Exception as err:
     print("Initial ping error:", err)
 
-# --- 5. حلقة خلفية للنبضات المتواصلة كل 10 ثوانٍ ---
+# --- 6. حلقة خلفية للنبضات المتواصلة كل 10 ثوانٍ ---
 def background_ping_loop():
     print(Fore.GREEN + "🔥 تشغيل خيط الخلفية لنبضات الجلسة كل 10 ثوانٍ...")
     while True:
@@ -170,22 +228,25 @@ def background_ping_loop():
 bg_thread = threading.Thread(target=background_ping_loop, daemon=True)
 bg_thread.start()
 
-# --- 6. خوارزمية جلب بيانات الحساب المتقدمة (3 طرق احتياطية) ---
+# --- 7. خوارزمية جلب وتحديد الدولة الحقيقية للحسابات العامة ---
 def fetch_user_details(username):
-    headers = get_session_headers(mobile_agent=False)
+    headers = get_clean_lookup_headers()
 
-    # الطريقة الأولى: Web API المباشر مع السيشن المعتمد
+    # الطريقة الأولى: Web API التفصيلي
     try:
         url = f"https://www.tiktok.com/api/user/detail/?aid=1988&uniqueId={username}"
         res = requests.get(url, headers=headers, proxies=PROXIES, timeout=10).json()
         if res.get("userInfo") and res["userInfo"].get("user"):
             u = res["userInfo"]["user"]
             st = res["userInfo"].get("stats", {})
+
+            region_fmt = get_formatted_region(u.get("region"), u.get("account_region"), u.get("country_code"))
+
             return {
                 "username": u.get("uniqueId") or username,
                 "nickname": u.get("nickname") or username,
                 "user_id": str(u.get("id") or u.get("uid") or "---"),
-                "region": str(u.get("region") or u.get("country_code") or "US").upper(),
+                "region": region_fmt,
                 "language": str(u.get("language") or "ar").upper(),
                 "verified": bool(u.get("verified")),
                 "private": bool(u.get("privateAccount")),
@@ -199,9 +260,12 @@ def fetch_user_details(username):
     except Exception as e:
         print("Lookup Method 1 failed:", e)
 
-    # الطريقة الثانية: Mobile App API
+    # الطريقة الثانية: Mobile Profile API
     try:
-        mobile_headers = get_session_headers(mobile_agent=True)
+        mobile_headers = {
+            "User-Agent": "TikTok 30.0.0 rv:300013 (iPhone; iOS 16.5; ar_SA) Cronet",
+            "Accept": "application/json"
+        }
         url = f"https://api16-normal-c-useast1a.tiktokv.com/aweme/v1/user/profile/other/?unique_id={username}&aid=1233"
         res = requests.get(url, headers=mobile_headers, proxies=PROXIES, timeout=10).json()
         if res.get("user"):
@@ -212,11 +276,13 @@ def fetch_user_details(username):
             elif u.get("avatar_thumb", {}).get("url_list"):
                 avatar_url = u["avatar_thumb"]["url_list"][0]
 
+            region_fmt = get_formatted_region(u.get("region"), u.get("account_region"), u.get("ip_location"), u.get("country_code"))
+
             return {
                 "username": u.get("unique_id") or username,
                 "nickname": u.get("nickname") or username,
                 "user_id": str(u.get("uid") or u.get("id") or "---"),
-                "region": str(u.get("region") or u.get("country_code") or "US").upper(),
+                "region": region_fmt,
                 "language": str(u.get("language") or "AR").upper(),
                 "verified": bool(u.get("custom_verify") or u.get("enterprise_verify_reason")),
                 "private": bool(u.get("secret")),
@@ -230,7 +296,7 @@ def fetch_user_details(username):
     except Exception as e:
         print("Lookup Method 2 failed:", e)
 
-    # الطريقة الثالثة: تحليل صفحة الملف الشخصي (HTML Scrape)
+    # الطريقة الثالثة: تحليل صفحة البروفايل (HTML Rehydration Data)
     try:
         url = f"https://www.tiktok.com/@{username}"
         html_res = requests.get(url, headers=headers, proxies=PROXIES, timeout=10).text
@@ -241,11 +307,14 @@ def fetch_user_details(username):
             if user_scope.get("userInfo"):
                 u = user_scope["userInfo"]["user"]
                 st = user_scope["userInfo"].get("stats", {})
+
+                region_fmt = get_formatted_region(u.get("region"), u.get("account_region"), u.get("location"))
+
                 return {
                     "username": u.get("uniqueId") or username,
                     "nickname": u.get("nickname") or username,
                     "user_id": str(u.get("id") or u.get("uid") or "---"),
-                    "region": str(u.get("region") or u.get("country_code") or "US").upper(),
+                    "region": region_fmt,
                     "language": str(u.get("language") or "ar").upper(),
                     "verified": bool(u.get("verified")),
                     "private": bool(u.get("privateAccount")),
@@ -261,7 +330,7 @@ def fetch_user_details(username):
 
     return None
 
-# --- 7. واجهة التطبيق الويب (Flask App) ---
+# --- 8. واجهة التطبيق الويب (Flask App) ---
 app = Flask(__name__)
 
 HTML_UI = """
@@ -307,13 +376,13 @@ HTML_UI = """
         <div class="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/30 border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-5">
             <div class="flex items-center space-x-3 space-x-reverse border-b border-slate-800 pb-3">
                 <i class="fa-solid fa-magnifying-glass text-amber-400 text-lg"></i>
-                <h2 class="text-sm font-black text-amber-300 uppercase tracking-wider">كشف واستعلام عن بيانات أي يوزر تيك توك</h2>
+                <h2 class="text-sm font-black text-amber-300 uppercase tracking-wider">كشف واستعلام عن بيانات ودولة أي يوزر تيك توك</h2>
             </div>
 
             <form onsubmit="searchUser(event)" class="flex flex-col sm:flex-row gap-3">
                 <div class="relative flex-1">
                     <span class="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 text-sm font-bold">@</span>
-                    <input type="text" id="targetUsername" required placeholder="أدخل اسم مستخدم أي شخص (مثال: iwahm)" 
+                    <input type="text" id="targetUsername" required placeholder="أدخل اسم مستخدم أي شخص (مثال: ksa أو iwahm)" 
                            class="w-full bg-slate-950 border border-slate-800 rounded-2xl pr-9 pl-4 py-3 text-xs text-slate-100 mono outline-none focus:border-amber-500 transition">
                 </div>
                 <button type="submit" id="searchBtn" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-3 rounded-2xl text-xs transition flex items-center justify-center space-x-2 space-x-reverse shadow-lg shadow-amber-500/20">
@@ -324,7 +393,7 @@ HTML_UI = """
 
             <div id="searchLoading" class="hidden py-8 text-center text-slate-400 text-xs font-medium">
                 <i class="fa-solid fa-spinner animate-spin text-2xl mb-2 block text-amber-400"></i>
-                جاري جلب بيانات الحساب والدولة عبر البروكسي...
+                جاري جلب دولة الحساب الحقيقية والبيانات...
             </div>
 
             <div id="searchResultCard" class="hidden bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-4">
@@ -348,7 +417,7 @@ HTML_UI = """
 
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div class="bg-slate-900 border border-slate-800/80 p-3 rounded-xl">
-                        <span class="text-slate-500 text-[10px] block font-bold uppercase">المنطقة / الدولة</span>
+                        <span class="text-slate-500 text-[10px] block font-bold uppercase">المنطقة / الدولة الحقيقية</span>
                         <span id="resRegion" class="font-black text-amber-400 text-sm">---</span>
                     </div>
                     <div class="bg-slate-900 border border-slate-800/80 p-3 rounded-xl">
@@ -553,11 +622,11 @@ def lookup_user():
     if not username:
         return jsonify({"success": False, "message": "اسم المستخدم مطلوب"}), 400
 
-    add_log("ping", f"🔍 جاري كشف بيانات @{username} عبر Oxylabs US Proxy...")
+    add_log("ping", f"🔍 جاري كشف بيانات ودولة @{username}...")
 
     user_data = fetch_user_details(username)
     if user_data:
-        add_log("success", f"✅ تم جلب بيانات @{username} (المنطقة: {user_data['region']})")
+        add_log("success", f"✅ تم جلب بيانات @{username} | الدولة: {user_data['region']}")
         return jsonify({"success": True, "user": user_data})
     else:
         add_log("error", f"❌ تعذر البحث عن @{username}")
