@@ -1,5 +1,6 @@
 # =====================================================================
 # 🐍 TikTok USA 24/7 Session Keeper & Universal Inspector
+# إصلاح شامل لنظام البحث وإضافة 3 طرق جلب تلقائية للحسابات
 # =====================================================================
 
 import sys
@@ -7,6 +8,8 @@ import subprocess
 import os
 import time
 import threading
+import json
+import re
 from datetime import datetime
 
 # --- 1. التثبيت التلقائي للمكتبات ---
@@ -38,12 +41,6 @@ PROXIES = {
     "https": PROXY_URL
 }
 
-HEADERS = {
-    "User-Agent": "TikTok 30.0.0 rv:300013 (iPhone; iOS 16.5; ar_SA) Cronet",
-    "Accept": "application/json",
-    "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8"
-}
-
 ENDPOINTS = [
     "https://api16-normal-c-useast1a.tiktokv.com/passport/web/account/info/?aid=1233",
     "https://www.tiktok.com/passport/web/account/info/?aid=1459"
@@ -70,6 +67,16 @@ def add_log(log_type, message):
     if len(activity_logs) > 35:
         activity_logs.pop()
 
+def get_session_headers(mobile_agent=True):
+    clean_sid = SESSION_ID.strip() if SESSION_ID else ""
+    ua = "TikTok 30.0.0 rv:300013 (iPhone; iOS 16.5; ar_SA) Cronet" if mobile_agent else "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1"
+    return {
+        "User-Agent": ua,
+        "Accept": "application/json, text/html, */*",
+        "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8",
+        "Cookie": f"sessionid={clean_sid}; sessionid_ss={clean_sid}; sid_tt={clean_sid}; store-country-code=us;"
+    }
+
 # --- 3. فحص اتصال البروكسي ---
 def check_proxy_ip():
     try:
@@ -95,14 +102,12 @@ def send_tiktok_ping():
 
     add_log("ping", f"⚡ نبضة تثبيت الجلسة رقم (#{session_state['total_pings']}) عبر بروكسي Oxylabs...")
 
-    current_headers = HEADERS.copy()
-    clean_sid = SESSION_ID.strip() if SESSION_ID else ""
-    current_headers["Cookie"] = f"sessionid={clean_sid}; sessionid_ss={clean_sid}; sid_tt={clean_sid}; store-country-code=us;"
-
+    headers = get_session_headers(mobile_agent=True)
     success = False
+
     for idx, url in enumerate(ENDPOINTS, 1):
         try:
-            res = requests.get(url, headers=current_headers, proxies=PROXIES, timeout=12)
+            res = requests.get(url, headers=headers, proxies=PROXIES, timeout=12)
             res_json = res.json()
 
             if res_json.get("data") and (res_json["data"].get("user_id") or res_json["data"].get("username")):
@@ -118,7 +123,6 @@ def send_tiktok_ping():
                     except Exception:
                         created_date = str(u.get("create_time"))
 
-                # إصلاح الخطأ: تحويل رمز الدولة لنص قبل upper() لتفادي الخطأ مع الأرقام مثل 966
                 raw_region = u.get("country_code") or u.get("region") or "US"
                 region_str = str(raw_region).upper()
 
@@ -166,7 +170,98 @@ def background_ping_loop():
 bg_thread = threading.Thread(target=background_ping_loop, daemon=True)
 bg_thread.start()
 
-# --- 6. واجهة التطبيق الويب (Flask App) ---
+# --- 6. خوارزمية جلب بيانات الحساب المتقدمة (3 طرق احتياطية) ---
+def fetch_user_details(username):
+    headers = get_session_headers(mobile_agent=False)
+
+    # الطريقة الأولى: Web API المباشر مع السيشن المعتمد
+    try:
+        url = f"https://www.tiktok.com/api/user/detail/?aid=1988&uniqueId={username}"
+        res = requests.get(url, headers=headers, proxies=PROXIES, timeout=10).json()
+        if res.get("userInfo") and res["userInfo"].get("user"):
+            u = res["userInfo"]["user"]
+            st = res["userInfo"].get("stats", {})
+            return {
+                "username": u.get("uniqueId") or username,
+                "nickname": u.get("nickname") or username,
+                "user_id": str(u.get("id") or u.get("uid") or "---"),
+                "region": str(u.get("region") or u.get("country_code") or "US").upper(),
+                "language": str(u.get("language") or "ar").upper(),
+                "verified": bool(u.get("verified")),
+                "private": bool(u.get("privateAccount")),
+                "followers": st.get("followerCount", 0),
+                "hearts": st.get("heartCount", 0),
+                "following": st.get("followingCount", 0),
+                "videos": st.get("videoCount", 0),
+                "bio": u.get("signature") or "",
+                "avatar": u.get("avatarLarger") or u.get("avatarMedium") or ""
+            }
+    except Exception as e:
+        print("Lookup Method 1 failed:", e)
+
+    # الطريقة الثانية: Mobile App API
+    try:
+        mobile_headers = get_session_headers(mobile_agent=True)
+        url = f"https://api16-normal-c-useast1a.tiktokv.com/aweme/v1/user/profile/other/?unique_id={username}&aid=1233"
+        res = requests.get(url, headers=mobile_headers, proxies=PROXIES, timeout=10).json()
+        if res.get("user"):
+            u = res["user"]
+            avatar_url = ""
+            if u.get("avatar_larger", {}).get("url_list"):
+                avatar_url = u["avatar_larger"]["url_list"][0]
+            elif u.get("avatar_thumb", {}).get("url_list"):
+                avatar_url = u["avatar_thumb"]["url_list"][0]
+
+            return {
+                "username": u.get("unique_id") or username,
+                "nickname": u.get("nickname") or username,
+                "user_id": str(u.get("uid") or u.get("id") or "---"),
+                "region": str(u.get("region") or u.get("country_code") or "US").upper(),
+                "language": str(u.get("language") or "AR").upper(),
+                "verified": bool(u.get("custom_verify") or u.get("enterprise_verify_reason")),
+                "private": bool(u.get("secret")),
+                "followers": u.get("follower_count", 0),
+                "hearts": u.get("total_favorited", 0),
+                "following": u.get("following_count", 0),
+                "videos": u.get("aweme_count", 0),
+                "bio": u.get("signature") or "",
+                "avatar": avatar_url
+            }
+    except Exception as e:
+        print("Lookup Method 2 failed:", e)
+
+    # الطريقة الثالثة: تحليل صفحة الملف الشخصي (HTML Scrape)
+    try:
+        url = f"https://www.tiktok.com/@{username}"
+        html_res = requests.get(url, headers=headers, proxies=PROXIES, timeout=10).text
+        match = re.search(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', html_res)
+        if match:
+            data = json.loads(match.group(1))
+            user_scope = data.get("__DEFAULT_SCOPE__", {}).get("webapp.user-detail", {})
+            if user_scope.get("userInfo"):
+                u = user_scope["userInfo"]["user"]
+                st = user_scope["userInfo"].get("stats", {})
+                return {
+                    "username": u.get("uniqueId") or username,
+                    "nickname": u.get("nickname") or username,
+                    "user_id": str(u.get("id") or u.get("uid") or "---"),
+                    "region": str(u.get("region") or u.get("country_code") or "US").upper(),
+                    "language": str(u.get("language") or "ar").upper(),
+                    "verified": bool(u.get("verified")),
+                    "private": bool(u.get("privateAccount")),
+                    "followers": st.get("followerCount", 0),
+                    "hearts": st.get("heartCount", 0),
+                    "following": st.get("followingCount", 0),
+                    "videos": st.get("videoCount", 0),
+                    "bio": u.get("signature") or "",
+                    "avatar": u.get("avatarLarger") or u.get("avatarMedium") or ""
+                }
+    except Exception as e:
+        print("Lookup Method 3 failed:", e)
+
+    return None
+
+# --- 7. واجهة التطبيق الويب (Flask App) ---
 app = Flask(__name__)
 
 HTML_UI = """
@@ -460,41 +555,13 @@ def lookup_user():
 
     add_log("ping", f"🔍 جاري كشف بيانات @{username} عبر Oxylabs US Proxy...")
 
-    url = f"https://www.tiktok.com/api/user/detail/?aid=1988&uniqueId={username}"
-    try:
-        res = requests.get(url, headers=HEADERS, proxies=PROXIES, timeout=12).json()
-        if res.get("userInfo") and res["userInfo"].get("user"):
-            u = res["userInfo"]["user"]
-            st = res["userInfo"].get("stats", {})
-
-            raw_reg = u.get("region") or "US"
-            reg_str = str(raw_reg).upper()
-
-            add_log("success", f"✅ تم جلب بيانات @{username} (المنطقة: {reg_str})")
-
-            return jsonify({
-                "success": True,
-                "user": {
-                    "username": u.get("uniqueId"),
-                    "nickname": u.get("nickname"),
-                    "user_id": str(u.get("id") or u.get("uid") or "---"),
-                    "region": reg_str,
-                    "language": str(u.get("language") or "ar").upper(),
-                    "verified": bool(u.get("verified")),
-                    "private": bool(u.get("privateAccount")),
-                    "followers": st.get("followerCount", 0),
-                    "hearts": st.get("heartCount", 0),
-                    "following": st.get("followingCount", 0),
-                    "videos": st.get("videoCount", 0),
-                    "bio": u.get("signature") or "",
-                    "avatar": u.get("avatarLarger") or u.get("avatarMedium") or ""
-                }
-            })
-        else:
-            msg = res.get("status_msg") or "الحساب غير موجود أو خاص"
-            return jsonify({"success": False, "message": msg}), 404
-    except Exception as e:
-        return jsonify({"success": False, "message": f"خطأ شبكة: {str(e)}"}), 500
+    user_data = fetch_user_details(username)
+    if user_data:
+        add_log("success", f"✅ تم جلب بيانات @{username} (المنطقة: {user_data['region']})")
+        return jsonify({"success": True, "user": user_data})
+    else:
+        add_log("error", f"❌ تعذر البحث عن @{username}")
+        return jsonify({"success": False, "message": "تعذر البحث عن الحساب أو أنه غير موجود"}), 404
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
